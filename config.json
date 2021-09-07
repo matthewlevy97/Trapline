@@ -1,6 +1,12 @@
 {
     "settings": {
-        "sockettimeout": 120
+        "sockettimeout": 120,
+        "malware_path": "../malware"
+    },
+    "publish": {
+        "publish_uri": "",
+        "staging_path": "../staging",
+        "delete_after_publish": true
     },
     "services": [
         {

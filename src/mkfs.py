@@ -80,7 +80,7 @@ class MakeVFS(object):
     
     def _get_perms(self, path: str) -> dict:
         st = os.stat(path)
-        perms = {
+        return {
             'mode': st.st_mode,
             'size': st.st_size,
             'atime': st.st_atime_ns,
@@ -98,7 +98,8 @@ class MakeVFS(object):
                     spec.loader.exec_module(mod)
                     if hasattr(mod, 'info'):
                         info = mod.__getattribute__('info')
-                        vfs[info['path']]['import'] = os.path.realpath(os.path.join(root, file))
+                        if info['path'] and info['run']:
+                            vfs[info['path']]['import'] = os.path.realpath(os.path.join(root, file))
 
 
 if __name__ == '__main__':

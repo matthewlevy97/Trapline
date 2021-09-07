@@ -4,9 +4,9 @@ from net.manager import NetManager
 import importlib
 import json
 
-def main(config_file: str = '../config.json'):
+def main():
     server_manager = NetManager()
-    with open(config_file, 'r') as f:
+    with open('../config.json', 'r') as f:
         config = json.load(f)
 
     setup_system(config)

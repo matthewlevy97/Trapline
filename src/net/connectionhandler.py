@@ -1,4 +1,5 @@
 from log.logger import logger
+from threatshare.session import ThreatSession
 import socket
 
 class ConnectionHandler(object):
@@ -6,6 +7,8 @@ class ConnectionHandler(object):
         self._sock = sock
         self._addr = addr
         self._recv_buf = bytearray()
+        self._threat_session = ThreatSession.get_session(addr[0])
+        self._handle = True
     
     def socket(self) -> socket.socket:
         return self._sock
@@ -14,6 +17,8 @@ class ConnectionHandler(object):
         return self._addr
     
     def shutdown(self):
+        self._threat_session.publish()
+
         if self._sock:
             self._sock.shutdown(socket.SHUT_RDWR)
             self._sock.close()
