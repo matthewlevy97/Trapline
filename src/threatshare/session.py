@@ -22,7 +22,8 @@ class ThreatSession(object):
 
     def __init__(self, remote_host: str):
         self._session_id = uuid4().hex
-        self._adversary_id = hashlib.sha256(remote_host.encode('utf-8')).hexdigest()
+        self._adversary_id = hashlib.sha256(remote_host.encode('latin-1')).hexdigest()
+        self._published = False
         self._metadata = {
             'session_id': self._session_id,
             'adversary_id': self._adversary_id,
@@ -32,20 +33,22 @@ class ThreatSession(object):
         }
         settings = Config.get('settings')
         if settings:
-            self._malware_path = settings.get('malware_path', '../staging')
+            self._malware_path = settings.get('malware_path', 'var/malware')
+        else:
+            self._malware_path = 'var/malware'
         
         publish = Config.get('publish')
         if publish:
-            self._staging_path = publish.get('staging_path', '../staging')
+            self._staging_path = publish.get('staging_path', 'var/staging')
             self._delete_after_publish = publish.get('delete_after_publish', True)
             self._publish_uri = publish.get('publish_uri', None)
         else:
-            self._malware_path = '../malware'
-            self._staging_path = '../staging'
+            self._staging_path = 'var/staging'
             self._delete_after_publish = True
             self._publish_uri = None
     
     def add_ioc(self, type: int, ioc: dict) -> None:
+        self._published = False
         if len(self._metadata['ioc']) > 0:
             previous = self._metadata['ioc'][-1]
             match = True
@@ -72,26 +75,29 @@ class ThreatSession(object):
         self._metadata['binary'].append(filename)
     
     def publish(self) -> None:
+        if self._published:
+            return
+        
         staging_file = os.path.join(self._staging_path, f'{self._session_id}.tgz')
         with tarfile.open(staging_file, mode='w:gz') as tar:
-            data = json.dumps(self._metadata).encode('utf-8')
+            data = json.dumps(self._metadata).encode('latin-1')
             info = tarfile.TarInfo(name="metadata.json")
             info.size = len(data)
             with BytesIO(data) as io:
                 tar.addfile(tarinfo=info, fileobj=io)
             
-            i = 0
-            while i < len(self._metadata['binary']):
-                binary = self._metadata['binary'][i]
-                if not os.path.isfile(binary):
-                    self._metadata['binary'].pop(i)
+            for binary in self._metadata['binary']:
+                binary_path = os.path.join(self._malware_path, binary)
+                if not os.path.isfile(binary_path):
                     continue
-                tar.add(f'{os.path.join(self._malware_path, binary)}', binary)
+                tar.add(binary_path, binary)
         
         if self._publish_uri:
             requests.post(self._publish_uri, files={'file': open(staging_file, 'rb')})
         if self._delete_after_publish:
             os.remove(staging_file)
+        
+        self._published = True
         logger.info(f'Published Threat Intel: [SessionID: {self._session_id}]')
 
 _threat_session: ThreatSession = None

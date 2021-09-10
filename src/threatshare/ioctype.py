@@ -28,7 +28,21 @@ class IOCType(object):
         'path': VFSPath
     }
     '''
-    DIRECTORY_DELETE = 3
+    FILE_CREATE = 3
+
+    '''
+    {
+        'path': VFSPath
+    }
+    '''
+    DIRECTORY_DELETE = 4
+
+    '''
+    {
+        path: VFSPath
+    }
+    '''
+    DIRECTORY_CREATE = 5
 
     '''
     {
@@ -37,7 +51,7 @@ class IOCType(object):
         'bytes_read': IntBytesRead
     }
     '''
-    FILE_READ = 4
+    FILE_READ = 6
 
     '''
     {
@@ -48,4 +62,61 @@ class IOCType(object):
         'overwrite': BoolOverwriteContents
     }
     '''
-    FILE_WRITE = 5
+    FILE_WRITE = 7
+
+    '''
+    {
+        source_path: VFSPath,
+        destination_path: VFSPath
+    }
+    '''
+    FILE_COPY = 8
+
+    '''
+    {
+        source_path: VFSPath,
+        destination_path: VFSPath
+    }
+    '''
+    FILE_MOVE = 9
+
+    '''
+    {
+        path: VFSPath,
+        old_mode: IntStatMode,
+        new_mode: IntStatMode
+    }
+    '''
+    FILE_PERMISSION_CHANGE = 10
+
+    '''
+    {
+        commands: ListCommands
+    }
+    '''
+    SHELL_COMMANDS = 20
+
+    '''
+    {
+        username: StrUsername,
+        password: StrPassword
+    }
+    '''
+    NETWORK_AUTHENTICATION = 50
+
+    '''
+    {
+        method: HTTPMethod,
+        path: URIPath,
+        http_version: HTTPVersion,
+        headers: ListHeaderTuples
+    }
+    '''
+    HTTP_REQUEST = 60
+
+    '''
+    {
+        content: StrContents
+    }
+    '''
+    HTTP_REQUEST_DATA = 61

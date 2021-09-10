@@ -1,0 +1,24 @@
+{
+    "settings": {
+        "sockettimeout": 120,
+        "malware_path": "var/malware",
+        "demote_username": "levym"
+    },
+    "publish": {
+        "publish_uri": "",
+        "staging_path": "var/staging",
+        "delete_after_publish": true
+    },
+    "services": [
+        {
+            "name": "telnet",
+            "port": 23,
+            "address": "0.0.0.0"
+        },
+        {
+            "name": "http",
+            "port": 80,
+            "address": "0.0.0.0"
+        }
+    ]
+}

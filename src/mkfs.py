@@ -1,5 +1,6 @@
 from vfs.vfs import VFS
 import importlib.util
+import copy
 import json
 import os
 
@@ -90,7 +91,7 @@ class MakeVFS(object):
 
     def _add_imports(self, vfs: dict) -> None:
         root_dir = os.path.join(self._root_dir, 'imports')
-        for root, dirs, files in os.walk(root_dir, topdown=False):
+        for root, _, files in os.walk(root_dir, topdown=False):
             for file in files:
                 if file.endswith('.py'):
                     spec = importlib.util.spec_from_file_location(file[:3], os.path.join(root, file))
@@ -99,11 +100,34 @@ class MakeVFS(object):
                     if hasattr(mod, 'info'):
                         info = mod.__getattribute__('info')
                         if info['path'] and info['run']:
-                            vfs[info['path']]['import'] = os.path.realpath(os.path.join(root, file))
-
+                            if isinstance(info['path'], list):
+                                self._add_imports_from_list(vfs, info['path'], root, file)
+                            else:
+                                vfs[info['path']]['import'] = os.path.realpath(os.path.join(root, file))
+    
+    def _add_imports_from_list(self, vfs: dict, paths: list, root: str, file: str):
+        known_good_path = None
+        for path in paths:
+            if path in vfs:
+                known_good_path = path
+                break
+        if not known_good_path:
+            print(f'[-] Failed Adding Import: No Valid Paths ({paths})')
+            return
+        
+        for path in paths:
+            if path not in vfs:
+                d, f = path.rsplit(self._sep, 1)
+                if d not in vfs or vfs[d]['type'] != VFS.INODE_TYPE_DIRECTORY:
+                    print(f'[-] Failed Adding Import: Not Valid Directory ({path})')
+                    return
+                if f not in vfs[d]['files']:
+                    vfs[d]['files'].append(f)
+                vfs[path] = copy.copy(vfs[known_good_path])
+            vfs[path]['import'] = os.path.realpath(os.path.join(root, file))
 
 if __name__ == '__main__':
-    mkfs = MakeVFS('../example_fs')
+    mkfs = MakeVFS('var/linux_fs')
     vfs = mkfs.generate()
-    with open('../linux_vfs.json', 'w') as f:
+    with open('etc/linux_vfs.json', 'w') as f:
         json.dump(vfs, f, indent=4, sort_keys=True)

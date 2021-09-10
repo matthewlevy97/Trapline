@@ -1,12 +1,14 @@
 
 from log.logger import logger
-from util.commandparser import CommandParser
+from threatshare.ioctype import IOCType
+from util.shell.commandparser import CommandParser
 from vfs.linux import LinuxVFS
 from net.connectionhandler import ConnectionHandler
 from vfs.vfs import VFS
 import importlib.util
 import socket
 import sys
+import random
 import re
 
 class ShellHandler(ConnectionHandler):
@@ -32,7 +34,20 @@ class ShellHandler(ConnectionHandler):
         self._stdin: bytes = None
         self._stdout: bytes = None
         self._stderr: bytes = None
-        self._exit_code = 0
+        self._exit_code: int = 0
+
+        _data = self._vfs.read_file('/etc/hostname')
+        if _data:
+            self._hostname = _data.decode('latin-1')
+        else:
+            self._hostname: str = 'chameleon'
+
+        self._kernel_name: str = 'Linux'
+        self._kernel_release: str = '#1 SMP Debian 3.2.68-1+deb7u1'
+        self._kernel_version: str = '3.2.0-4-amd64'
+        self._hardware_name: str = 'x86_64'
+        self._os_name: str = 'GNU/Linux'
+
         self._user: str = 'root'
         perms = self.lookup_user_perms(self._user)
         self._gid: int = perms['gid']
@@ -44,31 +59,104 @@ class ShellHandler(ConnectionHandler):
         self.set_environment_variable('USER', self._user)
         self.set_environment_variable('HOME', self._home_dir)
         self.set_environment_variable('PWD', self._cwd)
+
+        self._processes = self._default_process_list()
     
-    def stdin(self, data: bytes = None) -> bytes:
+    def shutdown(self):
+        self._threat_session.add_ioc(IOCType.SHELL_COMMANDS, {
+            'commands': self._history
+        })
+        return super().shutdown()
+
+    def add_process(self, proc: str, pid: int = -1, uid: int = -1, start_time: str = None) -> None:
+        process = {
+            'proc': proc
+        }
+        if pid != -1:
+            process['pid'] = pid
+        if uid != -1:
+            process['uid'] = uid
+        if start_time != None:
+            process['time'] = start_time
+    
+    def del_process(self, pid: int) -> bool:
+        for proc in self._processes:
+            if 'pid' in proc and proc['pid'] == pid:
+                self._processes.remove(proc)
+                return True
+        return False
+        
+    def processes(self) -> list:
+        ret = []
+        
+        base_pid = 100
+        delta = 30
+
+        for proc in self._processes:
+            if 'pid' in proc:
+                pid = proc['pid']
+            else:
+                pid = random.randint(base_pid, base_pid + delta)
+                base_pid += delta
+            
+            if 'time' in proc:
+                start_time = proc['time']
+            else:
+                start_time = '0:00'
+
+            if 'uid' in proc:
+                uid = proc['uid']
+            else:
+                uid = self._uid
+            ret.append(f'{pid: >5} {uid: >2} {start_time: >10} {proc["proc"]}')
+        return ret
+
+    def stdin(self, data: bytes = None, suppress_trailing: bool = False) -> bytes:
         if data:
             if self._stdin:
                 self._stdin += data
             else:
                 self._stdin = data
+            if not suppress_trailing:
+                self._stdin += self._line_ending
         return self._stdin
-    def stdout(self, data: bytes = None) -> bytes:
+    def stdout(self, data: bytes = None, suppress_trailing: bool = False) -> bytes:
         if data:
             if self._stdout:
-                self._stdout += b'\r\n' + data
+                self._stdout += data
             else:
                 self._stdout = data
+            if not suppress_trailing:
+                self._stdout += self._line_ending
         return self._stdout
-    def stderr(self, data: bytes = None) -> bytes:
+    def stderr(self, data: bytes = None, suppress_trailing: bool = False) -> bytes:
         if data:
             if self._stderr:
-                self._stderr += b'\r\n' + data
+                self._stderr += self._line_ending + data
             else:
                 self._stderr = data
+            if not suppress_trailing:
+                self._stderr += self._line_ending
         return self._stderr
 
     def get_exit_code(self) -> int:
         return self._exit_code
+
+    def hostname(self, hostname: str = None) -> str:
+        if hostname:
+            self._hostname = hostname
+        return self._hostname
+
+    def get_kernel_name(self) -> str:
+        return self._kernel_name
+    def get_kernel_release(self) -> str:
+        return self._kernel_release
+    def get_kernel_version(self) -> str:
+        return self._kernel_version
+    def get_machine_hardware(self) -> str:
+        return self._hardware_name
+    def get_os_name(self) -> str:
+        return self._os_name
 
     def get_user(self) -> str:
         return self._user
@@ -136,7 +224,7 @@ class ShellHandler(ConnectionHandler):
             else:
                 self._sock.sendall(self._user_prompt)
             
-            line = self.recv_until(b'\n')
+            line = self.recv_line()
             if not line:
                 break
             
@@ -145,8 +233,6 @@ class ShellHandler(ConnectionHandler):
                 self._sock.sendall(stderr)
             if stdout:
                 self._sock.sendall(stdout)
-        
-        self.shutdown()
     
     def _env_var_to_regex(self, variable: str):
         return re.compile(r'\$({%s}|%s((?=\s)|$))' % (variable, variable))
@@ -154,12 +240,12 @@ class ShellHandler(ConnectionHandler):
     def _generate_response(self, line: bytearray) -> tuple:
         ret_stdout = b''
         ret_stderr = b''
-        line = self._expand_variables(line.decode('utf-8'))
-        self._history.append(line)
+        line = self._expand_variables(line.decode('latin-1'))
+        self._history.append(line.strip('\n'))
         self._command_parser.feed(line)
         commands, parse_error = self._command_parser.parse()
         if parse_error:
-            return (None, parse_error.encode('utf-8'), 1)
+            return (None, parse_error.encode('latin-1'), 1)
 
         for command in commands:
             self._stdin = None
@@ -176,7 +262,7 @@ class ShellHandler(ConnectionHandler):
                     else:
                         file = self._vfs.lookup(stdin_filename)
                     if not file:
-                        self.stderr(f'{stdin_filename}: No such file or directory'.encode('utf-8'))
+                        self.stderr(f'{stdin_filename}: No such file or directory'.encode('latin-1'))
                         break
                     elif file['type'] == self._vfs.INODE_TYPE_FILE:
                         self._stdin = self._vfs.read_file(file['path'])
@@ -202,12 +288,8 @@ class ShellHandler(ConnectionHandler):
                 else:
                     if self._stderr != b'' and self._stderr != None:
                         ret_stderr += self._stderr
-                        if not ret_stderr.endswith(b'\r\n'):
-                            ret_stderr += b'\r\n'
                     if self._stdout != b'' and self._stdout != None:
                         ret_stdout += self._stdout
-                        if not ret_stdout.endswith(b'\r\n'):
-                            ret_stdout += b'\r\n'
                     command = None
 
             if not self._handle:
@@ -233,14 +315,14 @@ class ShellHandler(ConnectionHandler):
                     setattr(self, f'_{target}', None)
                 else:
                     if target == 'stderr':
-                        self._stderr = f'{fname}: No such file or directory'.encode('utf-8')
+                        self._stderr = f'{fname}: No such file or directory'.encode('latin-1')
                     else:
-                        self.stderr(f'{fname}: No such file or directory'.encode('utf-8'))
+                        self.stderr(f'{fname}: No such file or directory'.encode('latin-1'))
     
     def _command_not_found(self, executable: str) -> bytes:
         if executable.find('/') >= 0:
-            self.stderr(f'{executable}: No such file or directory'.encode('utf-8'))
-        self.stderr(f'{executable}: command not found'.encode('utf-8'))
+            self.stderr(f'{executable}: No such file or directory'.encode('latin-1'))
+        self.stderr(f'{executable}: command not found'.encode('latin-1'))
 
     def _expand_variables(self, data: str) -> str:
         for env_var in self._environment:
@@ -259,13 +341,13 @@ class ShellHandler(ConnectionHandler):
         
         if file:
             if file['type'] == self._vfs.INODE_TYPE_DIRECTORY:
-                self.stderr(f'{file["path"]}: Is a directory'.encode('utf-8'))
+                self.stderr(f'{file["path"]}: Is a directory'.encode('latin-1'))
                 return 1
             elif file['type'] == self._vfs.INODE_TYPE_FILE:
                 if 'import' in file:
                     return self._import_and_execute(file, executable, args)
                 else:
-                    self.stderr(f'{file["path"]}: Permission denied'.encode('utf-8'))
+                    self.stderr(f'{file["path"]}: Permission denied'.encode('latin-1'))
                     return 1
         return 1
     
@@ -286,6 +368,69 @@ class ShellHandler(ConnectionHandler):
             if 'run' in info:
                 return info['run'](self, executable, args)
         return 1
+
+    def _default_process_list(self) -> list:
+        return [
+            {
+                'pid': 1,
+                'uid': 0,
+                'proc': '{init} /bin/sh /sbin/init'
+            },
+            {
+                'pid': 2,
+                'uid': 0,
+                'proc': '[ksoftirqd/0]'
+            },
+            {
+                'pid': 3,
+                'uid': 0,
+                'proc': '[events/0]'
+            },
+            {
+                'pid': 4,
+                'uid': 0,
+                'proc': '[khelper]'
+            },
+            {
+                'pid': 5,
+                'uid': 0,
+                'proc': '[kthread]'
+            },
+            {
+                'pid': 20,
+                'uid': 0,
+                'proc': '[kblockd/0]'
+            },
+            {
+                'pid': 36,
+                'uid': 0,
+                'proc': '[pdflush]'
+            },
+            {
+                'pid': 37,
+                'uid': 0,
+                'proc': '[pdflush]'
+            },
+            {
+                'pid': 38,
+                'uid': 0,
+                'proc': '[kswapd0]'
+            },
+            {
+                'pid': 39,
+                'uid': 0,
+                'proc': '[aio/0]'
+            },
+            {
+                'pid': random.randint(100, 300),
+                'uid': self._uid,
+                'proc': 'sh'
+            },
+            {
+                'uid': self._uid,
+                'proc': 'ps sh'
+            }
+        ]
 
     def _do_cd(self, args) -> int:
         target_path = None
@@ -328,7 +473,7 @@ class ShellHandler(ConnectionHandler):
                 return 0
             elif arg.startswith('-') and len(arg) > 1:
                 self.stderr(f'''cd: {arg}: invalid option
-cd: usage: cd [-L|[-P [-e]] [-@]] [dir]'''.encode('utf-8'))
+cd: usage: cd [-L|[-P [-e]] [-@]] [dir]'''.encode('latin-1'))
                 return 2
             elif not target_path:
                 target_path = arg
@@ -347,20 +492,20 @@ cd: usage: cd [-L|[-P [-e]] [-@]] [dir]'''.encode('utf-8'))
         file = self._vfs.lookup(target_path)
         if file:
             if file['type'] != self._vfs.INODE_TYPE_DIRECTORY:
-                self.stderr(f'cd: {target_path}: Not a directory'.encode('utf-8'))
+                self.stderr(f'cd: {target_path}: Not a directory'.encode('latin-1'))
                 return 1
             else:
                 self.set_cwd(file['path'])
                 return 0
         else:
-            self.stderr(f'cd: {target_path}: No such file or directory'.encode('utf-8'))
+            self.stderr(f'cd: {target_path}: No such file or directory'.encode('latin-1'))
             return 1
     
     def _do_history(self, args) -> int:
         ret = ''
         for i in range(len(self._history)):
             ret += f'{i} {self._history[i]}'
-        self.stdout(ret.encode('utf-8'))
+        self.stdout(ret.encode('latin-1'))
         return 0
     
     def _do_exit(self, args) -> int:

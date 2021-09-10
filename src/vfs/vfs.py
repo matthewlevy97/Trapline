@@ -3,6 +3,7 @@ from threatshare.ioctype import IOCType
 from threatshare.session import ThreatSession
 from util.config import Config
 from uuid import uuid4
+import copy
 import json
 import os
 import stat
@@ -24,9 +25,9 @@ class VFS(object):
 
         settings = Config.get('settings')
         if settings:
-            self._malware_path = settings.get('malware_path', '..')
+            self._malware_path = settings.get('malware_path', 'var/malware')
         else:
-            self._malware_path = '..'
+            self._malware_path = 'var/malware'
     
     '''
     {
@@ -36,16 +37,24 @@ class VFS(object):
         'import': Py_Import_File_Path, (optional)
     }
     '''
-    def lookup(self, path: str) -> dict:
+    def lookup(self, path: str, create_if_not_exist: bool = False) -> dict:
         canonical = self.real_path(path)
         if canonical in self._config['fs']:
             return {
                 'path': canonical,
                 **self._config['fs'][canonical]
             }
+        if create_if_not_exist and self.create_file(canonical):
+            return self.lookup(canonical)
         return None
     
     def create_file(self, path: str, is_dir: bool = False, auto_dir: bool = False) -> bool:
+        path = self.real_path(path)
+
+        self._threat_session.add_ioc(IOCType.DIRECTORY_CREATE if is_dir else IOCType.FILE_CREATE, {
+            'path': path
+        })
+
         path_check = ''
         current_time = time.time_ns()
         spath = self.split(path)
@@ -74,7 +83,6 @@ class VFS(object):
                     return False
         
         self._config['fs'][path] = {
-            'type': self.INODE_TYPE_FILE,
             'size': 0,
             'mode': self.DEFAULT_MODE,
             'atime': current_time,
@@ -85,10 +93,15 @@ class VFS(object):
             self._config['fs'][path]['type'] = self.INODE_TYPE_DIRECTORY
             self._config['fs'][path]['size'] = self.DIRECTORY_SIZE
             self._config['fs'][path]['mode'] |= stat.S_IFDIR
+            self._config['fs'][path]['files'] = []
+        else:
+            self._config['fs'][path]['type'] = self.INODE_TYPE_FILE
+            self._config['fs'][path]['mode'] |= stat.S_IFREG
         
         return True
     
     def read_file(self, path: str) -> bytes:
+        path = self.real_path(path)
         file = self.lookup(path)
         if not file:
             return None
@@ -113,6 +126,7 @@ class VFS(object):
         return data
     
     def write_file(self, path: str, data: bytes, overwrite: bool = True) -> bool:
+        path = self.real_path(path)
         file = self.lookup(path)
         if not file:
             return False
@@ -142,8 +156,54 @@ class VFS(object):
             'overwrite': overwrite
         })
         return True
+
+    def chmod(self, path: str, mode: int, recursive: bool = False) -> bool:
+        path = self.real_path(path)
+        # Remove upper file type signifier
+        mode &= 0o777
+
+        if path in self._config['fs']:
+            if self._config['fs'][path]['type'] == self.INODE_TYPE_DIRECTORY:
+                if recursive:
+                    for file_name in self._config['fs'][path]['files']:
+                        new_path = self.join(path, file_name)
+                        self.chmod(new_path, mode, recursive)
+                mode |= stat.S_IFDIR
+            elif self._config['fs'][path]['type'] == self.INODE_TYPE_FILE:
+                mode |= stat.S_IFREG
+
+            self._threat_session.add_ioc(IOCType.FILE_PERMISSION_CHANGE, {
+                'path': path,
+                'old_mode': self._config['fs'][path]['mode'],
+                'new_mode': mode
+            })
+            self._config['fs'][path]['mode'] = mode
+            return True
+        return False
     
+    def copy(self, dst: str, src: str, delete_after_copy: bool = False) -> bool:
+        src = self.real_path(src)
+        dst = self.real_path(dst)
+        ioc_type = IOCType.FILE_MOVE if delete_after_copy else IOCType.FILE_COPY
+        if src in self._config['fs']:
+            self._threat_session.add_ioc(ioc_type, {
+                'source_path': src,
+                'destination_path': dst
+            })
+
+            if delete_after_copy:
+                self._config['fs'][dst] = self._config['fs'][src]
+                d, f = self.basename(src)
+                if d in self._config['fs'] and self._config['fs']['type'] == self.INODE_TYPE_DIRECTORY:
+                    self._config['fs'][d].remove(f)
+                del self._config['fs'][src]
+            else:
+                self._config['fs'][dst] = copy.copy(src)
+            return True
+        return False
+
     def rmfile(self, path: str) -> bool:
+        path = self.real_path(path)
         if path in self._config['fs']:
             self._threat_session.add_ioc(IOCType.FILE_DELETE, {
                 'path': path
@@ -159,6 +219,7 @@ class VFS(object):
         return False
 
     def rmdir(self, path: str) -> bool:
+        path = self.real_path(path)
         if path in self._config['fs']:
             self._threat_session.add_ioc(IOCType.DIRECTORY_DELETE, {
                 'path': path

@@ -37,6 +37,7 @@ class NetServer(object):
         sock, addr = self._sock.accept()
         handler = self._handler(sock, addr)
         handler.handle()
+        handler.shutdown()
     
     def shutdown(self) -> None:
         if self._sock:

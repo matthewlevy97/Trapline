@@ -1,0 +1,9 @@
+rootfs / rootfs rw 0 0
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+proc /proc proc rw,relatime 0 0
+udev /dev devtmpfs rw,relatime,size=10240k,nr_inodes=997843,mode=755 0 0
+devpts /dev/pts devpts rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000 0 0
+tmpfs /dev/shm tmpfs rw,nosuid,nodev 0 0
+tmpfs /tmp tmpfs rw,nosuid,relatime,noexec,size=1613336k,mode=755 0 0
+/dev/sda1 /boot ext2 rw,relatime 0 0
+/dev/mapper/home /home ext3 rw,relatime,data=ordered 0 0

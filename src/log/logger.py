@@ -10,6 +10,6 @@ class Logger(object):
         print(f'[ERROR] - {msg}')
     def fatal(self, msg: str):
         print(f'[FATAL] - {msg}')
-        import sys; sys.exit(1)
+        import os; os._exit(1)
 
 logger: Logger = Logger()
