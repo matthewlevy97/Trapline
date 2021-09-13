@@ -165,7 +165,7 @@ class ShellHandler(ConnectionHandler):
         return {
             'uid': 0,
             'gid': 0,
-            'home_dir': '/'
+            'home_dir': '/root'
         }
 
     def set_cwd(self, path: str) -> None:
