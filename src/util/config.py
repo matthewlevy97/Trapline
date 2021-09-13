@@ -13,5 +13,9 @@ class Config():
     def get(key: str) -> Any:
         with open(Config.config_file_path, 'r') as f:
             config = json.load(f)
-            ret = config.get(key, None)
-        return ret
+
+            for k in key.split('.'):
+                config = config.get(k, None)
+                if config == None:
+                    break
+        return config

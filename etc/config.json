@@ -1,13 +1,14 @@
 {
     "settings": {
-        "sockettimeout": 120,
+        "template_directory": "var/templates/",
+        "sockettimeout": 10,
         "malware_path": "var/malware",
         "demote_username": "levym"
     },
     "publish": {
         "publish_uri": "",
         "staging_path": "var/staging",
-        "delete_after_publish": true
+        "delete_after_publish": false
     },
     "services": [
         {

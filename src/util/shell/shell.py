@@ -62,11 +62,11 @@ class ShellHandler(ConnectionHandler):
 
         self._processes = self._default_process_list()
     
-    def shutdown(self):
+    def shutdown(self, final: bool = True):
         self._threat_session.add_ioc(IOCType.SHELL_COMMANDS, {
             'commands': self._history
         })
-        return super().shutdown()
+        return super().shutdown(final)
 
     def add_process(self, proc: str, pid: int = -1, uid: int = -1, start_time: str = None) -> None:
         process = {
@@ -210,6 +210,9 @@ class ShellHandler(ConnectionHandler):
         stdout = b''
         stderr = b''
         for line in lines:
+            if type(line) == str:
+                line = line.encode('latin-1')
+            
             tmp_stdout, tmp_stderr, exit_code = self._generate_response(line)
             stdout += tmp_stdout
             stderr += tmp_stderr

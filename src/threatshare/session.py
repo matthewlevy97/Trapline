@@ -62,10 +62,11 @@ class ThreatSession(object):
             if match:
                 return
         
-        self._metadata['ioc'].append({
+        ioc = {
             'type': type,
             **ioc
-        })
+        }
+        self._metadata['ioc'].append(ioc)
     
     def add_binary(self, filename: str, virtual_path: str = None) -> None:
         self.add_ioc(IOCType.BINARY_FILE, {

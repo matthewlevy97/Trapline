@@ -1,5 +1,32 @@
 
 class IOCType(object):
+    _type = {
+        0: 'ConnectionType',
+        1: 'BinaryFile',
+        2: 'FileDelete',
+        3: 'FileCreate',
+        4: 'DirectoryDelete',
+        5: 'DirectoryCreate',
+        6: 'FileRead',
+        7: 'FileWrite',
+        8: 'FileCopy',
+        9: 'FileMove',
+        10: 'FilePermissionChange',
+
+        20: 'ShellCommands',
+
+        50: 'NetworkAuthentication',
+
+        60: 'HTTPRequest',
+        61: 'HTTPRequestData'
+    }
+
+    @staticmethod
+    def name(type: int) -> str:
+        if type in IOCType._type:
+            return IOCType._types[type]
+        return ''
+    
     '''
     {
         'protocol': StrServerProtocol,

@@ -127,7 +127,7 @@ class MakeVFS(object):
             vfs[path]['import'] = os.path.realpath(os.path.join(root, file))
 
 if __name__ == '__main__':
-    mkfs = MakeVFS('var/linux_fs')
+    mkfs = MakeVFS('../var/linux_fs')
     vfs = mkfs.generate()
-    with open('etc/linux_vfs.json', 'w') as f:
+    with open('../etc/linux_vfs.json', 'w') as f:
         json.dump(vfs, f, indent=4, sort_keys=True)

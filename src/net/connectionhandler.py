@@ -17,7 +17,10 @@ class ConnectionHandler(object):
     def remote_address(self):
         return self._addr
     
-    def shutdown(self):
+    def shutdown(self, final: bool = True):
+        if not final:
+            return
+        
         self._threat_session.publish()
 
         if self._sock:

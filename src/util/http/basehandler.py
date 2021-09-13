@@ -2,8 +2,12 @@
 from typing import Any
 from net.connectionhandler import ConnectionHandler
 from util.http.status import HTTPStatus
+from util.config import Config
 from threatshare.ioctype import IOCType
+from mako.template import Template
+from urllib.parse import parse_qs
 import email.parser
+import os
 import socket
 import time
 
@@ -31,18 +35,39 @@ class HTTPBaseHandler(ConnectionHandler):
             self._threat_session.add_ioc(IOCType.HTTP_REQUEST, {
                 'method': self.command,
                 'path': self.path,
+                'parameters': self.parameters,
                 'http_version': self.request_version,
                 'headers': [(header, self.headers[header]) for header in self.headers]
             })
+            if self.contents:
+                self._threat_session.add_ioc(IOCType.HTTP_REQUEST_DATA, {
+                    'content': self.contents
+                })
 
             self.handle_response()
     
     def handle_response(self) -> None:
         raise NotImplementedError
 
+    def load_template(self, template: str, cache: bool = False, **kwargs) -> bytes:
+        if cache:
+            cache_dir = os.path.join(Config.get('settings.template_directory'), 'cache')
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+
+            template = Template(filename=os.path.join(Config.get('settings.template_directory'), template), \
+                module_directory=os.path.join(cache_dir, template))
+        else:
+            template = Template(filename=os.path.join(Config.get('settings.template_directory'), template))
+        
+        if template:
+            return template.render(**kwargs)
+        return None
+
     def parse_request(self) -> bool:
         self.command = None
         self.path = None
+        self.parameters = None
         self.request_version = None
         self.headers = None
 
@@ -56,6 +81,11 @@ class HTTPBaseHandler(ConnectionHandler):
             return False
         return True
 
+    def decode_form_data(self, data: str) -> dict:
+        if data:
+            return parse_qs(data)
+        return None
+
     def _parse_request(self) -> bool:
         self.request_line = self._raw_request.decode('latin-1').rstrip('\r\n')
         words = self.request_line.split()
@@ -66,7 +96,14 @@ class HTTPBaseHandler(ConnectionHandler):
             return False
 
         self.request_version = words[-1]
-        self.command, self.path = words[:2]
+        self.command, self.raw_path = words[:2]
+        if self.raw_path.find('?') > 0:
+            pos = self.raw_path.find('?')
+            self.path = self.raw_path[:pos]
+            self.parameters = parse_qs(self.raw_path[pos+1:])
+        else:
+            self.path = self.raw_path
+            self.parameters = None
         self.headers = self._parse_headers()
 
         conntype = self.headers.get('Connection', '')
@@ -83,6 +120,12 @@ class HTTPBaseHandler(ConnectionHandler):
                 self.contents = None
         else:
             self.contents = None
+        
+        if self.contents:
+            self.contents = self.contents.decode('latin-1')
+            if not self.parameters and \
+            self.headers.get('Content-Type', '') == 'application/x-www-form-urlencoded':
+                self.parameters = self.decode_form_data(self.contents)
 
         return True
     
@@ -111,7 +154,7 @@ class HTTPBaseHandler(ConnectionHandler):
         response += b'\r\n'
 
         if hasattr(self, '_content'):
-            response += self._content
+            response += self._content.encode('latin-1')
         
         self._sock.sendall(response)
 
@@ -136,14 +179,14 @@ class HTTPBaseHandler(ConnectionHandler):
         else:
             self._content_type = 'text/html'
 
-    def add_content(self, content: bytes, content_type: str = None) -> None:
+    def add_content(self, content: bytes, content_type: str = 'text/html') -> None:
         if not hasattr(self, '_content_type') or not self._content_type:
             if content_type:
                 self._content_type = content_type
             else:
                 self._content_type = 'text/html'
         if not hasattr(self, '_content'):
-            self._content = b''
+            self._content = ''
         self._content += content
 
     def date_time_string(self, timestamp=None):
