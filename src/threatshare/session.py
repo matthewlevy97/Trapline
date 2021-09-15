@@ -31,6 +31,8 @@ class ThreatSession(object):
             'ioc': [],
             'binary': []
         }
+        self._slack_url = Config.get('slack.webook_url', None)
+
         settings = Config.get('settings')
         if settings:
             self._malware_path = settings.get('malware_path', 'var/malware')
@@ -79,9 +81,14 @@ class ThreatSession(object):
         if self._published:
             return
         
+        data = json.dumps(self._metadata).encode('latin-1')
+        if self._slack_url:
+            requests.post(self._slack_url, data = {
+                "text": data
+            })
+
         staging_file = os.path.join(self._staging_path, f'{self._session_id}.tgz')
         with tarfile.open(staging_file, mode='w:gz') as tar:
-            data = json.dumps(self._metadata).encode('latin-1')
             info = tarfile.TarInfo(name="metadata.json")
             info.size = len(data)
             with BytesIO(data) as io:
