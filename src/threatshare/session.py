@@ -31,7 +31,7 @@ class ThreatSession(object):
             'ioc': [],
             'binary': []
         }
-        self._slack_url = Config.get('slack.webook_url', None)
+        self._slack_url = Config.get('slack.webhook_url')
 
         settings = Config.get('settings')
         if settings:
@@ -81,9 +81,9 @@ class ThreatSession(object):
         if self._published:
             return
         
-        data = json.dumps(self._metadata).encode('latin-1')
+        data = json.dumps(self._metadata)
         if self._slack_url:
-            requests.post(self._slack_url, data = {
+            requests.post(self._slack_url, json = {
                 "text": data
             })
 
@@ -91,7 +91,7 @@ class ThreatSession(object):
         with tarfile.open(staging_file, mode='w:gz') as tar:
             info = tarfile.TarInfo(name="metadata.json")
             info.size = len(data)
-            with BytesIO(data) as io:
+            with BytesIO(data.encode('latin-1')) as io:
                 tar.addfile(tarinfo=info, fileobj=io)
             
             for binary in self._metadata['binary']:

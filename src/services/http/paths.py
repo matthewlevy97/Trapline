@@ -25,6 +25,7 @@ class ExploitPaths(object):
             '/Autodiscover/Autodiscover.xml': self._proxy_logon,
             '/mapi/emsmdb/': self._proxy_logon,
             '/config/getuser': self._config_getuser,
+            '/cgi-bin/ddns_enc.cgi': self._config_getuser,
             '/solr/admin/info/system': self._apache_solr_8_2_0_rce,
             '/select': self._apache_solr_8_2_0_rce,
             '/wp-content/plugins/wp-file-manager/readme.txt': self._wp_file_manager,
@@ -156,8 +157,18 @@ class ExploitPaths(object):
         return False
     
     def _config_getuser(self) -> bool:
-        # CVE-2020-25078: DCS-2530L Leaked Admin
-        self.handler.add_content('name=admin\r\npass=admin\r\npriv=1\r\n')
+        if self.handler.path == '/config/getuser':
+            # CVE-2020-25078: DCS-2530L Leaked Admin
+            self.handler.add_content('name=admin\r\npass=admin\r\npriv=1\r\n')
+        elif self.handler.path == '/cgi-bin/ddns_enc.cgi':
+            account = self.handler.parameters.get('account')
+            if account:
+                cmd = account[0]
+                cmd = cmd[cmd.find(';', 1) + 1:]
+                cmd = cmd[:cmd.rfind(';', 1)]
+                self._rce(cmd)
+        else:
+            return False
         self.handler.send_response(HTTPStatus.OK)
         return True
     
